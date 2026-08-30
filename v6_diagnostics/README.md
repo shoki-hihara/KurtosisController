@@ -86,6 +86,18 @@ cat sgd_diag_smoke_log.txt
   「optimizer 種別 (SGD/AdamW) が CTRL の無介入現象の主因」という仮説を支持する
   材料になる。変わらなければ、アーキテクチャ (Transformer/Attention) 側の性質を
   疑う根拠になる。
+- **★2026-08-30追記: `baseline` 列が負値になっていないか、`k_t` 列が理論的下限
+  (excess kurtosis ≥ -2) を下回っていないかも必ず確認すること。** Axis C
+  (テキスト・LSTM、`axis_c_text/`, 本リポジトリの同じ計測パイプラインを使用) の
+  pilotで、baseline が負値になり `ContinuousStateKurtosisController` の
+  安全装置(`baseline<=0` → 永久にno-op)が発動する現象が発見されている。
+  疑われている原因は、疎な埋め込み層勾配など極端に不均質な勾配分布を1本の
+  Tensorに連結してから4次モーメントを計算する際の数値精度問題
+  ([[project_text_experiments]]参照)。もしこの診断実験でも `interventions=0`
+  かつ `baseline<0` または `k_t<-2` が観測された場合、それは「optimizer種別
+  (SGD/AdamW)」の話ではなく、この数値精度問題が表データ軸(FT-Transformer)でも
+  発生している可能性を示す、別の(場合によってはより重要な)発見になる。
+  「介入が起きたか」だけでなく、必ずこの点も切り分けて確認すること。
 
 ## 位置づけ
 

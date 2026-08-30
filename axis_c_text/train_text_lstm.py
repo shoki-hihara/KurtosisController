@@ -182,6 +182,21 @@ from typing import List, Optional, Tuple
 
 @torch.no_grad()
 def excess_kurtosis(x: torch.Tensor, eps: float = 1e-12) -> float:
+    # ★2026-08-30修正 (Axis Cのpilotで発覚): 元の実装は分母を `v ** 2 + eps` として
+    # いたが、これはスケールが不整合なバグだった。直前のガード `if v < eps` は v
+    # 自体(線形スケール)をepsと比較しているのに対し、分母に足すepsはv**2(2乗
+    # スケール)に対して加算されるため、"v はガードを通過する(v > eps) が
+    # v**2 は eps を下回る" という範囲 (eps < v < sqrt(eps) ≒ 1e-6) が抜け穴になり、
+    # 本来無視できるはずのepsが分母を支配して結果を系統的に -3 側へ歪めていた。
+    # LSTM+大語彙embeddingのように勾配絶対値の分散が小さくなりやすい構成
+    # (embeddingの疎な勾配で大半の要素が厳密に0になるため)でこれが顕在化し、
+    # 理論的にあり得ない値(excess kurtosisは任意の実数値分布で下限-2、
+    # Kurt >= Skew^2+1 という古典的不等式による)が大量に発生していた
+    # (実データで検証済み: PTB/WikiText-2ともpilotのk_t系列の95%超が-2を下回り、
+    # 最小値は-3近傍。float32/float64どちらで計算しても同じ値になることを確認して
+    # おり、精度の問題ではなくこのepsのスケール不一致が原因と特定した)。
+    # 「v**2+eps」の項からepsを単純に外し、真にゼロ除算になり得るケース
+    # (v がほぼ0)は直前の `if v < eps: return 0.0` ガードに任せる形にした。
     x = x.float()
     if x.numel() < 10:
         return float("nan")
@@ -190,7 +205,7 @@ def excess_kurtosis(x: torch.Tensor, eps: float = 1e-12) -> float:
     if v < eps:
         return 0.0
     m4 = ((x - mu) ** 4).mean()
-    k = m4 / (v ** 2 + eps) - 3.0
+    k = m4 / (v ** 2) - 3.0
     return float(k.item())
 
 

@@ -73,7 +73,7 @@ fi
 
 DATA_ROOT="/data01/s_hihara/tabular_data"
 SCRIPT="${SELF_DIR}/train_tabular_sgd_diag.py"
-GPU="?"   # ★実行前に、空いているGPU番号 ("0" か "1") に書き換えること
+GPU="1"   # ★2026-08-30、ユーザー確認済み(GPU1が空いた)
 DATASET="covtype"
 SCHEDULERS="ctrl cosine"
 
@@ -82,6 +82,13 @@ if [ "${GPU}" == "?" ]; then
     echo "        実際に空いているGPU番号に書き換えてから実行してください。"
     exit 1
 fi
+
+# ----------------------------------------------------------------------------
+# 依存ライブラリの確認 (★2026-08-30追加。run_pilot_tabular.sh/run_pilot_text.sh
+# と同じパターン: 未インストールの場合のみ pip install する)
+# ----------------------------------------------------------------------------
+python3 -c "import wandb" 2>/dev/null || pip install wandb --break-system-packages
+python3 -c "import rtdl_revisiting_models" 2>/dev/null || pip install rtdl_revisiting_models --break-system-packages
 
 if [ "${MODE}" == "smoke" ]; then
     SEEDS="0"
