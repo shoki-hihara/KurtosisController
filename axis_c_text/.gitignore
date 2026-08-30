@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+pilot_results/
+wandb/
+*.log
+pilot_log_text.txt

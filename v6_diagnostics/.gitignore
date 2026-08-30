@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+pilot_results/
+sgd_diag_results/
+wandb/
+*.log
+pilot_log_text.txt
+sgd_diag_smoke_log.txt
+sgd_diag_full_log.txt
