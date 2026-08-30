@@ -12,14 +12,26 @@
 #   コードを更新した場合もラボサーバ側でファイルを個別コピーし直す必要はなく、
 #   次回`bash run_pilot_text.sh`を実行するだけで自動的に最新版が反映される。
 #
+# ★2026-08-30(続き): リポジトリ shoki-hihara/KurtosisController は、将来的に
+#   全実験コードを集約する方針のため、axisごとのサブディレクトリ構成に変更された。
+#   このファイル(train_text_lstm.py等一式)は `axis_c_text/` サブディレクトリに
+#   置かれている(リポジトリ直下ではない)。これに伴い、旧バージョンの
+#   「`.git`が自分と同じディレクトリにあるか」で判定していたリポジトリ検出ロジックは
+#   (.gitはリポジトリ直下にしかないため)サブディレクトリからは検出できず、
+#   git pullが黙って実行されなくなる不具合があったため、下記-1節を修正した。
+#
 #   【初回セットアップ(このリポジトリをまだcloneしていない場合、最初の1回だけ)】
-#     git clone <REPO_URL> /data01/s_hihara/ctrl_v5_axis_c_text
-#     cd /data01/s_hihara/ctrl_v5_axis_c_text
+#     git clone https://github.com/shoki-hihara/KurtosisController.git \
+#         /data01/s_hihara/KurtosisController
+#     cd /data01/s_hihara/KurtosisController/axis_c_text
 #     bash run_pilot_text.sh > pilot_log_text.txt 2>&1
 #
-#   【2回目以降】(cloneしたディレクトリ内で実行すればよい。以前のような
-#     dos2unix/手動コピーの手順は不要)
-#     cd /data01/s_hihara/ctrl_v5_axis_c_text
+#   【他axis用に既にこのリポジトリをcloneしている場合】
+#     そのディレクトリで `git pull` した上で axis_c_text/ に入ればよい。
+#     改めてcloneし直す必要はない。
+#
+#   【2回目以降】
+#     cd <cloneしたディレクトリ>/axis_c_text
 #     bash run_pilot_text.sh > pilot_log_text.txt 2>&1
 #     cat pilot_log_text.txt
 #
@@ -55,7 +67,13 @@ set -e
 # -1. 自分自身のいる場所を検出し、リポジトリなら最新化する
 # ----------------------------------------------------------------------------
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -d "${SELF_DIR}/.git" ]; then
+# ★2026-08-30修正: このファイルはリポジトリ直下ではなく axis_c_text/ サブディレクトリ
+# に置かれるようになったため (.git はリポジトリルートにあり、ここには無い)、
+# 従来の `-d "${SELF_DIR}/.git"` ではサブディレクトリから検出できなかった
+# (常にelse節に落ちてgit pullが実行されない不具合があった)。
+# `git rev-parse --is-inside-work-tree` でgit管理下のどこかにいるかを判定する
+# 方式に変更(サブディレクトリからでも正しくリポジトリルートを検出する)。
+if git -C "${SELF_DIR}" rev-parse --is-inside-work-tree > /dev/null 2>&1; then
     echo "=== リポジトリを最新化: git -C ${SELF_DIR} pull ==="
     git -C "${SELF_DIR}" pull
 else

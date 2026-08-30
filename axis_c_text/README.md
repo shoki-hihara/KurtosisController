@@ -1,10 +1,15 @@
 # CTRL v5 — Axis C (テキストデータ実験)
 
-CTRL v5 (kurtosis-based learning-rate controller) の汎用性検証のうち、
-テキストデータ軸 (Penn Treebank / WikiText-2、正則化LSTM) のコード一式。
+[shoki-hihara/KurtosisController](https://github.com/shoki-hihara/KurtosisController)
+リポジトリの `axis_c_text/` サブディレクトリ。CTRL v5 (kurtosis-based
+learning-rate controller) の汎用性検証のうち、テキストデータ軸
+(Penn Treebank / WikiText-2、正則化LSTM) のコード一式。
 
-このリポジトリには**コード(学習スクリプト・コントローラ実装)のみ**を置いている。
-実験結果・データ・論文原稿等は含まない。
+このリポジトリ全体には**コード(学習スクリプト・コントローラ実装)のみ**を
+置いている(実験結果・データ・論文原稿等は含まない)。将来的に全実験コード
+(CIFAR-100本実験・Axis A画像・Axis B表データ・v6診断実験)をこのリポジトリに
+axisごとのサブディレクトリで集約する方針(2026-08-30)。表データ軸のCTRL v6
+診断実験は `v6_diagnostics/` を参照。
 
 ## ファイル
 
@@ -19,15 +24,24 @@ CTRL v5 (kurtosis-based learning-rate controller) の汎用性検証のうち、
 ## セットアップ (ラボサーバ、最初の1回だけ)
 
 ```bash
-git clone <このリポジトリのURL> /data01/s_hihara/ctrl_v5_axis_c_text
-cd /data01/s_hihara/ctrl_v5_axis_c_text
+git clone https://github.com/shoki-hihara/KurtosisController.git \
+    /data01/s_hihara/KurtosisController
+cd /data01/s_hihara/KurtosisController/axis_c_text
 bash run_pilot_text.sh > pilot_log_text.txt 2>&1
 cat pilot_log_text.txt
 ```
 
-2回目以降も同じディレクトリで `bash run_pilot_text.sh` を実行するだけでよい。
-スクリプトが起動時に自動で `git pull` するため、コードを更新した場合も
-ファイルを手動でコピーし直す必要はない。
+他axis用に既にこのリポジトリをcloneしている場合は、そのディレクトリで
+`git pull` した上で `axis_c_text/` に入るだけでよい。改めてcloneし直す
+必要はない。
+
+2回目以降は `<cloneしたディレクトリ>/axis_c_text` で `bash run_pilot_text.sh`
+を実行するだけでよい。スクリプトが起動時に自動で `git pull` するため、
+コードを更新した場合もファイルを手動でコピーし直す必要はない
+(★2026-08-30: サブディレクトリ構成への移行に伴い、リポジトリ検出ロジックを
+`git rev-parse --is-inside-work-tree` ベースに修正済み。旧版のまま
+axis_c_text/ に置くと、この自動更新が黙って効かなくなる不具合があったため
+要注意)。
 
 ## データについて
 
