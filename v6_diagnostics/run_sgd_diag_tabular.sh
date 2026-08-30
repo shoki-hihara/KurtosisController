@@ -76,6 +76,12 @@ SCRIPT="${SELF_DIR}/train_tabular_sgd_diag.py"
 GPU="1"   # ★2026-08-30、ユーザー確認済み(GPU1が空いた)
 DATASET="covtype"
 SCHEDULERS="ctrl cosine"
+# ★2026-08-30追加: smoke(lr=0.1既定)がbest_val_epoch=0(実質学習未進行)・
+# baseline<=0/kurtosis_min<-2(数値精度バグ疑い、project_ctrl_v6_design.md参照)
+# になったため、lrを外から指定できるようにした。環境変数 SGD_LR を指定すれば
+# --sgd_lr としてそのまま渡す(train_tabular_sgd_diag.py側の既定は0.1のまま)。
+# 例: SGD_LR=0.01 bash run_sgd_diag_tabular.sh smoke
+SGD_LR="${SGD_LR:-}"
 
 if [ "${GPU}" == "?" ]; then
     echo "エラー: GPU=\"?\" のままです。このファイル冒頭の GPU 変数を、"
@@ -102,13 +108,14 @@ echo "=== ${DATA_ROOT} 以下で見つかった ${DATASET} の場所 ==="
 find "${DATA_ROOT}" -maxdepth 4 -type d -iname "${DATASET}" -o -type d -iname "covertype"
 
 echo ""
-echo "############ CTRL v6 診断実験: ${DATASET}, mode=${MODE}, seeds=${SEEDS} (GPU${GPU}) ############"
+echo "############ CTRL v6 診断実験: ${DATASET}, mode=${MODE}, seeds=${SEEDS} (GPU${GPU}, sgd_lr=${SGD_LR:-0.1(既定)}) ############"
 python3 "${SCRIPT}" \
     --dataset "${DATASET}" --protocol noes \
     --schedulers ${SCHEDULERS} --seeds ${SEEDS} \
     --epochs 20 --device cuda --cuda_visible_devices "${GPU}" \
     --data_root "${DATA_ROOT}" --data_source official \
     --optimizer_override sgd \
+    ${SGD_LR:+--sgd_lr "${SGD_LR}"} \
     --save_dir "${SELF_DIR}/sgd_diag_results/${DATASET}_${MODE}"
 
 echo ""

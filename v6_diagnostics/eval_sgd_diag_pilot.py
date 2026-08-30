@@ -21,12 +21,14 @@ eval_tabular_wandb.py (v3) からの変更点 (このファイル固有):
   - extract_run_metrics() に "grad/kurtosis" (生のk_t) の最小値
     (kurtosis_min) を追加抽出し、自動診断セクションで
     baseline<=0 または kurtosis_min<-2 (excess kurtosisの理論的下限) を
-    明示的に警告するようにした。Axis C (LSTM/PTB) のpilotで、CTRLが
-    「baselineが負値になる」という別種のno-op(safety-guard)を起こし、
-    かつ観測されたk_tが理論的に不可能な値(<-2)を示すという数値バグ疑いの
-    症状が見つかったため(project_text_experiments.md 参照)、この
-    SGD差し替え診断実験でも同じ症状が出ていないかを、結果を
-    「SGD/Adam仮説の証拠」と解釈する前に必ず確認する必要がある。
+    明示的に警告するようにした。Axis C (LSTM/PTB) のpilotで見つかったのと
+    同じ症状で、原因は train_tabular_sgd_diag.py の excess_kurtosis() に
+    あった eps のスケール不整合バグ (v < eps のガードと v**2 + eps の
+    分母でepsのスケールが不一致で、結果が-3側に系統的に歪む) と確定して
+    おり、★2026-08-30にこのファイル側のexcess_kurtosis()も修正済み
+    (project_text_experiments.md / project_ctrl_v6_design.md 参照)。
+    修正後もこの警告が出た場合は別の原因を疑う必要があるため、引き続き
+    自動診断に残してある。
 
 以下は元の eval_tabular_wandb.py (v3) のdocstring(引き続き有効な説明):
 
@@ -100,11 +102,14 @@ DATASETS = {
 
 TIMESERIES_OUT_DIR = Path("./v5_timeseries_tabular")
 
-# ★末尾に (?:-sgdopt)? を追加: train_tabular_sgd_diag.py は
-# optimizer_override指定時、run_name末尾に "-sgdopt" を付与するため
+# ★末尾に (?:-sgdopt)?(?:-lr[0-9.]+)? を追加: train_tabular_sgd_diag.py は
+# optimizer_override指定時、run_name末尾に "-sgdopt" を、さらに --sgd_lr で
+# 既定lr(0.1)を上書きした場合は "-lr{lr}" も付与するため(2026-08-30、
+# smokeがbest_val_epoch=0で実質学習未進行だったため、複数lrで再検証できるように
+# 追加した機能。project_ctrl_v6_design.md参照)。
 RUN_NAME_RE = re.compile(
     r"^(?P<dataset>[a-z_]+)-fttransformer-(?P<protocol>[a-z0-9]+)-"
-    r"(?P<method>[a-z_]+)-seed(?P<seed>\d+)(?:-sgdopt)?$"
+    r"(?P<method>[a-z_]+)-seed(?P<seed>\d+)(?:-sgdopt)?(?:-lr(?P<sgd_lr>[0-9.]+))?$"
 )
 
 
@@ -553,18 +558,20 @@ def display_results(df_all, df_detail):
             print(f"    v baseline = {r['baseline']:.2f}")
             if r["baseline"] <= 0:
                 print("    !! 警告: baseline <= 0 です。Axis C (LSTM/PTB pilot) で"
-                      "見つかった数値バグと同じ症状の可能性があります。"
-                      "この場合CTRLはsafety-guardにより恒久的にno-opになっている"
-                      "可能性が高く、以下のkurtosis_minの値と合わせて"
-                      "「SGD/Adam仮説の証拠」と解釈する前に必ず"
+                      "見つかったのと同じ症状です。原因はexcess_kurtosis()の"
+                      "epsスケール不整合バグと確定済みで、このファイルが使う"
+                      "train_tabular_sgd_diag.pyは2026-08-30に修正済みのはずです。"
+                      "それでもこの警告が出る場合、このrunが修正前のコードで"
+                      "実行された(再実行が必要)か、別の原因が疑われるので、"
                       "project_text_experiments.md / project_ctrl_v6_design.md "
                       "の該当セクションを確認してください。")
 
         if pd.notna(r.get("kurtosis_min")) and r["kurtosis_min"] < -2:
             print(f"    !! 警告: kurtosis_min = {r['kurtosis_min']:.3f} < -2 "
                   "(excess kurtosisの理論的下限を下回っています)。"
-                  "collect_grad_magnitudes()/excess_kurtosis()の数値精度バグ"
-                  "疑いの症状です(Axis Cと同一の疑い)。")
+                  "excess_kurtosis()のepsスケール不整合バグ(Axis Cが確定・"
+                  "修正済み)の症状です。修正後のコードで再実行したrunか"
+                  "確認してください。")
 
         cm_final = r["current_mult_final"]
         cm_min = r["current_mult_min"]

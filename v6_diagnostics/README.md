@@ -86,18 +86,27 @@ cat sgd_diag_smoke_log.txt
   「optimizer 種別 (SGD/AdamW) が CTRL の無介入現象の主因」という仮説を支持する
   材料になる。変わらなければ、アーキテクチャ (Transformer/Attention) 側の性質を
   疑う根拠になる。
-- **★2026-08-30追記: `baseline` 列が負値になっていないか、`k_t` 列が理論的下限
-  (excess kurtosis ≥ -2) を下回っていないかも必ず確認すること。** Axis C
-  (テキスト・LSTM、`axis_c_text/`, 本リポジトリの同じ計測パイプラインを使用) の
-  pilotで、baseline が負値になり `ContinuousStateKurtosisController` の
-  安全装置(`baseline<=0` → 永久にno-op)が発動する現象が発見されている。
-  疑われている原因は、疎な埋め込み層勾配など極端に不均質な勾配分布を1本の
-  Tensorに連結してから4次モーメントを計算する際の数値精度問題
-  ([[project_text_experiments]]参照)。もしこの診断実験でも `interventions=0`
-  かつ `baseline<0` または `k_t<-2` が観測された場合、それは「optimizer種別
-  (SGD/AdamW)」の話ではなく、この数値精度問題が表データ軸(FT-Transformer)でも
-  発生している可能性を示す、別の(場合によってはより重要な)発見になる。
-  「介入が起きたか」だけでなく、必ずこの点も切り分けて確認すること。
+- **★2026-08-30追記→確定・修正済み: `baseline` 列が負値になっていないか、`k_t`
+  列が理論的下限(excess kurtosis ≥ -2)を下回っていないかも必ず確認すること。**
+  Axis C(テキスト・LSTM、`axis_c_text/`)のpilotで、baseline が負値になり
+  `ContinuousStateKurtosisController` の安全装置(`baseline<=0` → 永久にno-op)
+  が発動する現象が発見され、根本原因が `excess_kurtosis()` の eps スケール
+  不整合バグ(`if v < eps` のガードはvを線形スケールで比較しているのに対し、
+  分母に加算する eps は `v**2` に対するものでスケールが不一致。
+  `eps < v < sqrt(eps)` の範囲で結果が-3側に系統的に歪む)と確定した
+  ([[project_text_experiments]]参照)。**このリポジトリの
+  `train_tabular_sgd_diag.py` の `excess_kurtosis()` にも同修正を2026-08-30に
+  適用済み**(`k = m4 / (v ** 2 + eps) - 3.0` → `k = m4 / (v ** 2) - 3.0`)。
+- **★2026-08-30: smoke test(seed=0, lr=0.1既定)の結果、SGD側の学習自体が
+  実質失敗していたことが判明**(`best_val_epoch=0`, `final_test_metric=0.4876`
+  でAdamW版のtarget 0.90を大幅に下回る)。SGD_DIAG_TABULAR_CONFIGのlr=0.1が
+  FT-Transformerに対して大きすぎる可能性が高い。`--sgd_lr`オプション
+  (環境変数 `SGD_LR`)を追加したので、再smoke test時はより小さいlr
+  (例: 0.01, 0.001)も試し、まず「SGDで健全に学習が進む」設定を先に
+  見つけること。上記のexcess_kurtosis()修正と合わせて、**このsmoke testの
+  結果(baseline=-1.10, kurtosis_min=-3.00)は修正前コード・かつ学習が
+  失敗していた状態でのものなので、そのまま「SGD/Adam仮説」の証拠として
+  解釈しないこと。** 再実行して初めて意味のある比較になる。
 
 ## 位置づけ
 

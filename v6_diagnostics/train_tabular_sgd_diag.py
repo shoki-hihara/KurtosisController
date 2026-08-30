@@ -230,6 +230,19 @@ from cwgd_controller import CWGDController
 
 @torch.no_grad()
 def excess_kurtosis(x: torch.Tensor, eps: float = 1e-12) -> float:
+    # ★2026-08-30修正 (Axis C [[project_text_experiments]] スレッドが
+    # ptb/wikitext2の実データctrl_trace CSV解析+合成データ再現実験で確定した
+    # バグ修正をこちらにも適用): 元の実装は分母を `v**2 + eps` としていたが、
+    # 直前のガード `if v < eps: return 0.0` はv(線形スケール)をepsと比較して
+    # いるのに対し、分母のepsはv**2(2乗スケール)に加算されており、スケールが
+    # 不整合だった。このため `eps < v < sqrt(eps) ≒ 1e-6` の範囲(vはガードを
+    # 通過するがv**2はepsを大きく下回る)で、本来無視できるはずのepsが分母を
+    # 支配し、結果が理論的下限(-2)を超えて-3側に系統的に歪んでいた
+    # (このv6診断実験のsmoke testでも kurtosis_min=-2.9998 として観測された
+    # 症状と一致)。float32/float64どちらで計算してもbit-identicalな誤った値を
+    # 返すことをAxis C側が確認済みで、精度問題ではなくこのepsの置き方自体が
+    # 原因と断定されている。真にゼロ除算になり得るケース(vがほぼ0)は既存の
+    # `if v < eps: return 0.0` ガードに任せ、分母からは単純に `+ eps` を削除する。
     x = x.float()
     if x.numel() < 10:
         return float("nan")
@@ -238,7 +251,7 @@ def excess_kurtosis(x: torch.Tensor, eps: float = 1e-12) -> float:
     if v < eps:
         return 0.0
     m4 = ((x - mu) ** 4).mean()
-    k = m4 / (v ** 2 + eps) - 3.0
+    k = m4 / (v ** 2) - 3.0
     return float(k.item())
 
 
@@ -1524,6 +1537,18 @@ def run_schedulers_multiseed_tabular(
                 run_name=(
                     f"{dataset}-fttransformer-{protocol}-{scheduler_name}-seed{seed}"
                     + ("-sgdopt" if optimizer_override is not None else "")
+                    # ★2026-08-30追加: --sgd_lr でSGD_DIAG_TABULAR_CONFIGの既定lr(0.1)を
+                    # 上書きした場合のみ run_name に -lr{lr} を付与する。異なるlrで複数回
+                    # 実行した際、discover_runs()が同名runを区別できず後勝ちで上書きして
+                    # しまう(seed=0のlr=0.1結果とlr=0.01結果が同一run_nameになり、
+                    # eval側でどちらか片方しか見えなくなる)事故を防ぐため。既定lr=0.1の
+                    # ままなら run_name は変わらない(既存のsmoke結果との後方互換を維持)。
+                    + (
+                        f"-lr{optimizer_override['lr']}"
+                        if optimizer_override is not None
+                        and optimizer_override.get("lr") != SGD_DIAG_TABULAR_CONFIG["lr"]
+                        else ""
+                    )
                 ),
                 project=project,
                 scheduler_name=effective_scheduler,
@@ -1624,6 +1649,15 @@ if __name__ == "__main__":
              "従来通りAdamWのまま。--schedulers には ctrl/cosine 等のみ指定すること "
              "(gala/cwgdとの併用は非対応、--schedulers のhelp参照)。",
     )
+    parser.add_argument(
+        "--sgd_lr", type=float, default=None,
+        help="★2026-08-30追加。--optimizer_override sgd 使用時、SGD_DIAG_TABULAR_CONFIG "
+             "の lr (既定0.1) をこの値で上書きする。smoke test(covtype)でlr=0.1が "
+             "best_val_epoch=0(実質学習未進行)・baseline<=0/k_t<-2(excess_kurtosis()の "
+             "epsスケール不整合バグ、2026-08-30修正済み、project_ctrl_v6_design.md参照)"
+             "になったため、"
+             "より小さいlr(例: 0.01, 0.001)での再検証に使う。未指定なら既定の0.1のまま。",
+    )
     parser.add_argument("--save_dir", type=str, default=None)
     args = parser.parse_args()
 
@@ -1653,7 +1687,8 @@ if __name__ == "__main__":
         data_source=args.data_source,
         save_dir=args.save_dir,
         optimizer_override=(
-            dict(SGD_DIAG_TABULAR_CONFIG) if args.optimizer_override == "sgd" else None
+            {**SGD_DIAG_TABULAR_CONFIG, **({"lr": args.sgd_lr} if args.sgd_lr is not None else {})}
+            if args.optimizer_override == "sgd" else None
         ),
     )
 
